@@ -1,14 +1,46 @@
+{ // bloc isolé : aucune variable ne fuit vers les autres cartes
 /*
  * PC Control Card (FR)
  * Carte Home Assistant pour piloter vos PC : image de PC, état allumé/éteint, fenêtre active,
  * démarrage (Wake-on-LAN) et extinction. Plusieurs PC, style verre, thème clair/sombre, éditeur visuel.
  */
 
-const CARD_VERSION = "1.0.0";
+const CARD_VERSION = "1.1.0";
+
+/* === NUANCE COMMUNE v2 (cartes Johan854) ===
+ * Bloc identique dans toutes les cartes. Options : nuance, nuance_perso, intensite.
+ * nuance "theme" (par défaut) : suit la variable carte-nuance du thème Home Assistant ;
+ * si elle n'existe pas, la carte garde ses couleurs d'origine. Intensité : 0 = neutre, 1 = normal, 2 = très coloré. */
+const GV_NUANCES = [["braise", "Braise (rouge)", "#e0524f"], ["ocean", "Océan (bleu)", "#2f8fd8"], ["lagon", "Lagon (turquoise)", "#1fb5a8"], ["foret", "Forêt (vert)", "#3fae5a"], ["lavande", "Lavande (violet)", "#8a63d8"], ["framboise", "Framboise (rose)", "#e05597"], ["ambre", "Ambre (orange)", "#e8902c"], ["ardoise", "Ardoise (neutre)", "#7d8595"]];
+const GV_DEFAULTS = { nuance: "theme", intensite: 1 };
+const gvAccent = (c) => {
+  const p = c && c.nuance_perso;
+  if (c && c.nuance === "perso") {
+    if (Array.isArray(p) && p.length === 3) return "#" + p.map((v) => Math.max(0, Math.min(255, Math.round(+v || 0))).toString(16).padStart(2, "0")).join("");
+    if (typeof p === "string" && /^#?[0-9a-f]{6}$/i.test(p.trim())) return "#" + p.trim().replace("#", "");
+  }
+  const n = GV_NUANCES.find((x) => x[0] === (c && c.nuance));
+  return n ? n[2] : "var(--carte-nuance)";
+};
+/* Variables posées sur <ha-card> : --g-bg-x (fond dégradé teinté) et --acc-ui-x (couleur d'accent).
+ * Sans nuance (thème sans carte-nuance), elles sont invalides : chaque carte retombe alors sur ses couleurs d'origine. */
+const gvStyle = (c, dark) => {
+  const i = Number(c && c.intensite), ai = Number.isFinite(i) ? Math.max(0, Math.min(2, i)) : 1;
+  const m = (pct, base) => `color-mix(in srgb,var(--acc-ui) ${+(pct * ai).toFixed(1)}%,${base})`;
+  const bg = dark ? `linear-gradient(160deg,${m(5, "#1b1e32")} 0%,${m(11, "#1f1b2c")} 55%,${m(22, "#1c1620")} 100%)`
+    : `linear-gradient(160deg,${m(2, "#f8f9fd")} 0%,${m(5, "#eef1f8")} 55%,${m(11, "#f8f8fa")} 100%)`;
+  return `--acc-ui:${gvAccent(c)};--g-bg-x:${bg};--acc-ui-x:color-mix(in srgb,var(--acc-ui) ${dark ? "80%,#fff" : "82%,#000"})`;
+};
+const GV_FIELDS = [
+  { name: "nuance", selector: { select: { mode: "dropdown", options: [{ value: "theme", label: "Selon le thème (couleurs d'origine)" }, ...GV_NUANCES.map((n) => ({ value: n[0], label: n[1] })), { value: "perso", label: "Personnalisée" }] } } },
+  { name: "nuance_perso", selector: { color_rgb: {} } },
+  { name: "intensite", selector: { number: { min: 0, max: 2, step: 0.1, mode: "slider" } } }];
+const GV_LABELS = { nuance: "Nuance de couleur", nuance_perso: "Couleur personnalisée (nuance « Personnalisée »)", intensite: "Intensité de la nuance" };
+/* === FIN NUANCE COMMUNE === */
 
 const DEFAULTS = {
   title: "",
-  theme: "auto", // auto | light | dark
+  theme: "auto", nuance: "theme", intensite: 1, // auto | light | dark
   columns: 0, // 0 = automatique
   confirm: true,
   pcs: [],
@@ -145,13 +177,13 @@ class PcControlCard extends HTMLElement {
       <style>
         * { box-sizing: border-box; }
         ha-card.dark {
-          --pc-text:#f4f6fb; --pc-muted:#a9afc0; --pc-bg:linear-gradient(160deg,#1b1e32 0%,#241a2a 55%,#2d1519 100%);
+          --pc-text:#f4f6fb; --pc-muted:#a9afc0; --pc-bg:var(--g-bg-x,linear-gradient(160deg,#1b1e32 0%,#241a2a 55%,#2d1519 100%));
           --pc-border:rgba(255,255,255,.14); --pc-shadow:0 .6em 2em rgba(0,0,0,.35);
           --pc-glass:rgba(255,255,255,.07); --pc-glass-b:rgba(255,255,255,.13); --pc-fill:rgba(255,255,255,.09); --pc-fill-b:rgba(255,255,255,.16);
           --pc-on:#3ddc84; --pc-err:#ff5a5f; --pc-off:#8a8f9c; --pc-case:#2c3140; --pc-line:#6f7788; --pc-screen-on:#12162a; --pc-screen-off:#0b0d14;
         }
         ha-card.light {
-          --pc-text:#1c2030; --pc-muted:#5d6477; --pc-bg:linear-gradient(160deg,#f8f9fd 0%,#eef1f8 55%,#f8eff0 100%);
+          --pc-text:#1c2030; --pc-muted:#5d6477; --pc-bg:var(--g-bg-x,linear-gradient(160deg,#f8f9fd 0%,#eef1f8 55%,#f8eff0 100%));
           --pc-border:rgba(20,24,40,.12); --pc-shadow:0 .4em 1.4em rgba(20,24,40,.12);
           --pc-glass:rgba(255,255,255,.7); --pc-glass-b:rgba(20,24,40,.1); --pc-fill:rgba(20,24,40,.06); --pc-fill-b:rgba(20,24,40,.14);
           --pc-on:#1a9d55; --pc-err:#d32f35; --pc-off:#8a8f9c; --pc-case:#e3e7f0; --pc-line:#8d95a8; --pc-screen-on:#1d2440; --pc-screen-off:#c9cedb;
@@ -187,7 +219,7 @@ class PcControlCard extends HTMLElement {
         .empty { color:var(--pc-muted); font-size:.9em; }
         @media (prefers-reduced-motion: reduce) { .led { animation:none; } }
       </style>
-      <ha-card class="${dark ? "dark" : "light"}">
+      <ha-card class="${dark ? "dark" : "light"}" style="${gvStyle(this._config, dark)}">
         ${c.title ? `<h2>${esc(c.title)}</h2>` : ""}
         ${cards ? `<div class="grid">${cards}</div>` : `<div class="empty">Ajoutez un PC dans l'éditeur de la carte.</div>`}
       </ha-card>`;
@@ -211,7 +243,7 @@ class PcControlCard extends HTMLElement {
 }
 
 /* ---------- Éditeur visuel ---------- */
-const LABELS = {
+const LABELS = { ...GV_LABELS,
   title: "Titre (facultatif)", theme: "Thème", columns: "Colonnes (0 = automatique)", confirm: "Confirmer avant d'éteindre",
   name: "Nom du PC", picture: "Photo du PC (facultatif, ex. /local/pc.png)", window_entity: "Fenêtre active (capteur)",
   shutdown_entity: "Extinction (switch)", wake_entity: "Démarrage Wake-on-LAN (bouton)", state_entity: "État allumé/éteint (facultatif : ping, binary_sensor)",
@@ -264,7 +296,7 @@ class PcControlCardEditor extends HTMLElement {
       { type: "grid", name: "", schema: [
         { name: "columns", selector: { number: { min: 0, max: 6, mode: "box" } } },
         { name: "theme", selector: { select: { mode: "dropdown", options: [
-          { value: "auto", label: "Automatique (thème de Home Assistant)" }, { value: "light", label: "Clair" }, { value: "dark", label: "Sombre" } ] } } },
+          { value: "auto", label: "Automatique (thème de Home Assistant)" }, { value: "light", label: "Clair" }, { value: "dark", label: "Sombre" } ] } } }, ...GV_FIELDS,
       ] },
       { name: "confirm", selector: { boolean: {} } },
     ];
@@ -329,3 +361,4 @@ console.info(
   "color:#fff;background:#5b6cff;font-weight:700;border-radius:3px 0 0 3px;padding:2px 4px",
   "color:#5b6cff;background:#fff;font-weight:700;border-radius:0 3px 3px 0;padding:2px 4px"
 );
+}
