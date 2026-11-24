@@ -5,7 +5,7 @@
  * démarrage (Wake-on-LAN) et extinction. Plusieurs PC, style verre, thème clair/sombre, éditeur visuel.
  */
 
-const CARD_VERSION = "1.2.0";
+const CARD_VERSION = "1.3.0";
 
 /* === NUANCE COMMUNE v2 (cartes Johan854) ===
  * Bloc identique dans toutes les cartes. Options : nuance, nuance_perso, intensite.
@@ -99,6 +99,50 @@ function pcSvg(on, text, shot, k) {
 </svg>`;
 }
 
+// Zone de l'écran dans la photo du moniteur (en % : gauche, haut, largeur, hauteur).
+// Valeurs par défaut : photo images/ecran-koorui.png fournie avec la carte.
+const SCREEN_AREA = [1.41, 0.85, 97.08, 67.95];
+function screenArea(v) {
+  const n = String(v ?? "").split(/[,; ]+/).map(Number).filter(Number.isFinite);
+  return n.length === 4 ? n : SCREEN_AREA;
+}
+
+// Mini PC posé à plat (format micro type OptiPlex Micro), vu de face. `on` : voyant d'alimentation allumé.
+function miniPcSvg(on) {
+  const vents = Array.from({ length: 7 }, (_, r) => Array.from({ length: 9 }, (_, k) =>
+    `<rect x="${14 + k * 6}" y="${19 + r * 3.6}" width="3.6" height="1.6" rx=".8" fill="#0c0d10" opacity=".85"/>`).join("")).join("");
+  return `
+<svg viewBox="0 0 160 54" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <ellipse cx="80" cy="50" rx="74" ry="3.2" fill="#000" opacity=".22"/>
+  <path d="M6 15 L17 5 H143 L154 15 Z" fill="#363a44" stroke="#4a4f5c" stroke-width=".8"/>
+  <rect x="6" y="15" width="148" height="32" rx="2.5" fill="#24272e" stroke="#4a4f5c" stroke-width=".8"/>
+  ${vents}
+  <circle cx="92" cy="31" r="2.2" fill="#0c0d10" stroke="#565b68" stroke-width=".6"/>
+  <rect x="101" y="28.5" width="11" height="5" rx="1" fill="#0c0d10" stroke="#565b68" stroke-width=".6"/>
+  <rect x="103" y="29.8" width="7" height="1.6" fill="#2f6fd6"/>
+  <rect x="116" y="28.5" width="11" height="5" rx="1" fill="#0c0d10" stroke="#565b68" stroke-width=".6"/>
+  <rect x="118" y="29.8" width="7" height="1.6" fill="#2f6fd6"/>
+  <circle cx="141" cy="31" r="5.2" fill="#1a1c21" stroke="${on ? "var(--pc-on)" : "#5a5f6b"}" stroke-width="1.3" class="${on ? "led" : ""}"/>
+  <path d="M141 28 V31 M138.6 29.4 A3.3 3.3 0 1 0 143.4 29.4" fill="none" stroke="${on ? "var(--pc-on)" : "#6f7582"}" stroke-width="1" stroke-linecap="round"/>
+  <rect x="12" y="47" width="14" height="2" rx="1" fill="#15171b"/><rect x="134" y="47" width="14" height="2" rx="1" fill="#15171b"/>
+</svg>`;
+}
+
+// Scène « photo du moniteur + mini PC » : la capture d'écran (ou la fenêtre active) est posée dans l'écran de la photo.
+function monitorArt(p, on, win, shot) {
+  const [l, t, w, hh] = screenArea(p.screen_area);
+  const inner = on && shot ? `<img src="${esc(shot)}" alt="">`
+    : on ? `<div class="onscr"><span>${esc(cut(win || "En ligne", 40))}</span></div>`
+    : `<div class="offscr">⏻</div>`;
+  return `<div class="scene">
+    <div class="mon"><img class="monimg" src="${esc(p.monitor_picture)}" alt="">
+      <div class="ov" style="left:${l}%;top:${t}%;width:${w}%;height:${hh}%">${inner}</div></div>
+    ${p.mini_pc === false ? "" : `<div class="mini">${miniPcSvg(on)}</div>`}
+  </div>`;
+}
+
+const safeUrl = (u) => u && !/^\s*(javascript|vbscript|data:text)/i.test(String(u));
+
 class PcControlCard extends HTMLElement {
   static getConfigElement() {
     return document.createElement("pc-control-card-editor");
@@ -185,8 +229,9 @@ class PcControlCard extends HTMLElement {
       // Capture d'écran (entité image.*) : affichée dans le moniteur quand le PC est allumé, à la place de la photo.
       const shot = on ? shotUrl(h, p.screenshot_entity) : "";
       const at = shot ? shotTime(h, p.screenshot_entity) : "";
-      const photo = !shot && p.picture && !/^\s*(javascript|vbscript|data:text)/i.test(String(p.picture));
-      const art = photo ? `<img class="photo ${on ? "" : "offimg"}" src="${esc(p.picture)}" alt="${esc(name)}">` : pcSvg(on, win, shot, i);
+      const photo = !shot && safeUrl(p.picture);
+      const art = safeUrl(p.monitor_picture) ? monitorArt(p, on, win, shot)
+        : photo ? `<img class="photo ${on ? "" : "offimg"}" src="${esc(p.picture)}" alt="${esc(name)}">` : pcSvg(on, win, shot, i);
       const ww = p.wake_entity && h.states[p.wake_entity]; const canWake = !!ww && ww.state !== "unavailable";
       const canOff = p.shutdown_entity && on;
       const cs = p.capture_entity && h.states[p.capture_entity]; const canSnap = on && !bad(cs);
@@ -246,6 +291,16 @@ class PcControlCard extends HTMLElement {
         .b.wake { color:var(--pc-on); } .b.stop { color:var(--pc-err); }
         .b.snap { flex:none; padding:.6em .8em; color:var(--acc-ui-x,#5b6cff); }
         .art.zoom { cursor:zoom-in; }
+        .scene { position:relative; width:100%; max-width:360px; padding-bottom:2%; }
+        .mon { position:relative; width:86%; }
+        .monimg { display:block; width:100%; height:auto; }
+        .ov { position:absolute; overflow:hidden; border-radius:3px; }
+        .ov img { display:block; width:100%; height:100%; object-fit:cover; }
+        .onscr { width:100%; height:100%; display:flex; align-items:center; justify-content:center; padding:.6em; text-align:center;
+          background:linear-gradient(135deg,#1d2850 0%,#35286a 100%); color:#e8ecff; font-size:.78em; font-weight:600; line-height:1.25; }
+        .offscr { width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#5a5f6b; font-size:1.6em; opacity:.6; }
+        .mini { position:absolute; right:0; bottom:0; width:30%; }
+        .mini svg { display:block; width:100%; height:auto; }
         .b:disabled { opacity:.35; cursor:default; }
         .b:not(:disabled):active { background:var(--pc-fill-b); }
         .led { animation:pc-led 1.8s ease-in-out infinite; } @keyframes pc-led { 50% { opacity:.35; } }
@@ -289,6 +344,8 @@ const LABELS = { ...GV_LABELS,
   name: "Nom du PC", picture: "Photo du PC (facultatif, ex. /local/pc.png)", window_entity: "Fenêtre active (capteur)",
   shutdown_entity: "Extinction (switch)", wake_entity: "Démarrage Wake-on-LAN (bouton)", state_entity: "État allumé/éteint (facultatif : ping, binary_sensor)",
   screenshot_entity: "Capture d'écran (facultatif, entité image)", capture_entity: "Bouton de capture d'écran (facultatif)",
+  monitor_picture: "Photo de l'écran (facultatif, ex. /local/image/ecran-koorui.png)", mini_pc: "Afficher le mini PC à côté de l'écran",
+  screen_area: "Zone de l'écran dans la photo, en % : gauche, haut, largeur, hauteur (vide = photo Koorui)",
 };
 const PC_SCHEMA = [
   { name: "name", selector: { text: {} } },
@@ -298,6 +355,9 @@ const PC_SCHEMA = [
   { name: "state_entity", selector: { entity: { domain: ["binary_sensor", "device_tracker", "sensor"] } } },
   { name: "screenshot_entity", selector: { entity: { domain: "image" } } },
   { name: "capture_entity", selector: { entity: { domain: ["button", "script"] } } },
+  { name: "monitor_picture", selector: { text: {} } },
+  { name: "mini_pc", selector: { boolean: {} } },
+  { name: "screen_area", selector: { text: {} } },
   { name: "picture", selector: { text: {} } },
 ];
 
@@ -309,7 +369,7 @@ class PcControlCardEditor extends HTMLElement {
     if (!same) return this._build();
     // Même structure : on met simplement à jour les données (évite de perdre le focus pendant la saisie)
     const forms = this.querySelectorAll("ha-form");
-    forms.forEach((f, i) => { f.data = i === 0 ? this._config : this._config.pcs[i - 1]; });
+    forms.forEach((f, i) => { f.data = i === 0 ? this._config : { mini_pc: true, ...this._config.pcs[i - 1] }; });
   }
 
   set hass(hass) {
@@ -357,7 +417,7 @@ class PcControlCardEditor extends HTMLElement {
       box.innerHTML = `<div class="h"><span>PC ${i + 1}</span><span><button data-up="${i}" title="Monter">↑</button> <button data-down="${i}" title="Descendre">↓</button> <button data-del="${i}" title="Supprimer">✕</button></span></div>`;
       const f = document.createElement("ha-form");
       f.hass = this._hass;
-      f.data = p;
+      f.data = { mini_pc: true, ...p };
       f.computeLabel = (s) => LABELS[s.name] || s.name;
       f.schema = PC_SCHEMA;
       f.addEventListener("value-changed", (ev) => {

@@ -28,6 +28,16 @@ Avec `screenshot_entity` (entité `image.*`, par exemple la capture de HASS.Agen
 Avec `capture_entity`, un bouton 📷 prend une nouvelle capture à la demande. Rien n'est capturé en continu.
 PC éteint : l'ancienne capture n'est pas affichée.
 
+### Photo de l'écran + mini PC
+Avec `monitor_picture`, la carte affiche la **photo de ton écran**, avec un **mini PC** (format micro, type OptiPlex Micro) posé à côté. Son voyant s'allume quand le PC est en marche. La capture d'écran, ou la fenêtre active, s'affiche dans l'écran de la photo.
+La photo d'un écran incurvé Koorui, détourée sur fond transparent, est fournie : [`images/ecran-koorui.png`](images/ecran-koorui.png). Copie-la dans `/config/www/image/`, puis indique `monitor_picture: /local/image/ecran-koorui.png`.
+Pour une autre photo, règle `screen_area` (position de l'écran dans la photo, en % : gauche, haut, largeur, hauteur).
+
+```yaml
+    monitor_picture: /local/image/ecran-koorui.png
+    mini_pc: true          # false pour masquer le mini PC
+```
+
 | Option | Description |
 |---|---|
 | `pcs[].name` | Nom du PC |
@@ -37,6 +47,9 @@ PC éteint : l'ancienne capture n'est pas affichée.
 | `pcs[].state_entity` | Facultatif : entité d'état (ping, `binary_sensor`…) ; sans elle, le PC est considéré allumé tant que l'extinction est disponible |
 | `pcs[].picture` | Photo facultative à la place du dessin |
 | `pcs[].screenshot_entity` | Facultatif : entité `image` de capture d'écran, affichée dans l'écran du PC allumé (prioritaire sur la photo) |
+| `pcs[].monitor_picture` | Facultatif : photo de l'écran (fond transparent) ; la capture ou la fenêtre active s'affiche dedans |
+| `pcs[].mini_pc` | Afficher le mini PC à côté de l'écran (`true` par défaut) |
+| `pcs[].screen_area` | Position de l'écran dans la photo en % (`gauche, haut, largeur, hauteur`) ; vide = photo Koorui fournie |
 | `pcs[].capture_entity` | Facultatif : bouton (ou script) qui prend une capture d'écran, ajouté sous forme de bouton 📷 |
 | `columns`, `confirm`, `theme`, `title` | Colonnes (0 = auto), confirmation avant extinction, thème, titre |
 
@@ -64,5 +77,6 @@ Sans cette ligne, `nuance: theme` garde les couleurs d'origine de la carte.
 
 ## Historique des versions
 
+- **1.3.0** : photo de l'écran (`monitor_picture`, photo Koorui fournie) avec la capture dans l'écran, et mini PC dessiné à côté (`mini_pc`).
 - **1.2.0** : capture d'écran dans l'écran du PC (`screenshot_entity`), bouton de capture à la demande (`capture_entity`), affichage en grand au toucher.
 - **1.1.0** : nuance de couleur au choix (8 nuances, couleur personnalisée, intensité, ou nuance commune via `carte-nuance` dans le thème).
