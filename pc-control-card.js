@@ -5,7 +5,7 @@
  * démarrage (Wake-on-LAN) et extinction. Plusieurs PC, style verre, thème clair/sombre, éditeur visuel.
  */
 
-const CARD_VERSION = "1.1.0";
+const CARD_VERSION = "1.2.0";
 
 /* === NUANCE COMMUNE v2 (cartes Johan854) ===
  * Bloc identique dans toutes les cartes. Options : nuance, nuance_perso, intensite.
@@ -52,8 +52,36 @@ const bad = (st) => !st || st.state === "unavailable" || st.state === "unknown";
 const cut = (t, n) => (t.length > n ? t.slice(0, n - 1) + "…" : t);
 let UID = 0;
 
-// Dessin d'un PC (écran + tour). `on` : allumé ; `text` : fenêtre active affichée sur l'écran.
-function pcSvg(on, text) {
+// URL de l'image d'une entité image.* (capture d'écran), ou "" si indisponible.
+// Le paramètre `v` (horodatage de la capture) force le navigateur à recharger chaque nouvelle capture.
+function shotUrl(hass, eid) {
+  const s = eid && hass.states[eid];
+  if (bad(s) || !s.attributes || !s.attributes.entity_picture) return "";
+  const u = String(s.attributes.entity_picture);
+  const full = typeof hass.hassUrl === "function" ? hass.hassUrl(u) : u;
+  return full + (full.includes("?") ? "&" : "?") + "v=" + encodeURIComponent(s.state);
+}
+
+// Heure d'une capture (état ISO de l'entité image.*), ex. « 19:12 ».
+function shotTime(hass, eid) {
+  const s = eid && hass.states[eid];
+  if (bad(s)) return "";
+  const d = new Date(s.state);
+  return isNaN(d) ? "" : d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
+
+// Dessin d'un PC (écran + tour). `on` : allumé ; `text` : fenêtre active affichée sur l'écran ;
+// `shot` : URL de la dernière capture d'écran, affichée dans le moniteur quand le PC est allumé ; `k` : index (identifiants SVG uniques).
+function pcSvg(on, text, shot, k) {
+  const clip = `pcclip${k}`;
+  const screen = on && shot
+    ? `<clipPath id="${clip}"><rect x="17" y="19" width="114" height="68" rx="3"/></clipPath>
+  <image href="${esc(shot)}" x="17" y="19" width="114" height="68" preserveAspectRatio="xMidYMid slice" clip-path="url(#${clip})"/>`
+    : on ? `<rect x="17" y="19" width="114" height="68" rx="3" fill="url(#pcg)" opacity=".35"/>
+  <rect x="17" y="19" width="114" height="9" rx="3" fill="#ffffff" opacity=".12"/>
+  <circle cx="23" cy="23.5" r="1.4" fill="#ff6b6b"/><circle cx="28" cy="23.5" r="1.4" fill="#ffd166"/><circle cx="33" cy="23.5" r="1.4" fill="#6bd67a"/>
+  <text x="74" y="60" text-anchor="middle" class="scr">${esc(cut(text || "En ligne", 20))}</text>`
+    : `<text x="74" y="57" text-anchor="middle" class="scro">⏻</text>`;
   return `
 <svg viewBox="0 0 200 130" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <rect x="150" y="22" width="34" height="92" rx="5" fill="var(--pc-case)" stroke="var(--pc-line)" stroke-width="1.4"/>
@@ -64,10 +92,7 @@ function pcSvg(on, text) {
   <rect x="158" y="96" width="18" height="6" rx="2" fill="var(--pc-line)" opacity=".5"/>
   <rect x="10" y="12" width="128" height="82" rx="7" fill="var(--pc-case)" stroke="var(--pc-line)" stroke-width="1.6"/>
   <rect x="17" y="19" width="114" height="68" rx="3" fill="${on ? "var(--pc-screen-on)" : "var(--pc-screen-off)"}"/>
-  ${on ? `<rect x="17" y="19" width="114" height="68" rx="3" fill="url(#pcg)" opacity=".35"/>
-  <rect x="17" y="19" width="114" height="9" rx="3" fill="#ffffff" opacity=".12"/>
-  <circle cx="23" cy="23.5" r="1.4" fill="#ff6b6b"/><circle cx="28" cy="23.5" r="1.4" fill="#ffd166"/><circle cx="33" cy="23.5" r="1.4" fill="#6bd67a"/>
-  <text x="74" y="60" text-anchor="middle" class="scr">${esc(cut(text || "En ligne", 20))}</text>` : `<text x="74" y="57" text-anchor="middle" class="scro">⏻</text>`}
+  ${screen}
   <path d="M64 94 L60 110 H88 L84 94Z" fill="var(--pc-case)" stroke="var(--pc-line)" stroke-width="1.2"/>
   <rect x="48" y="110" width="52" height="5" rx="2.5" fill="var(--pc-case)" stroke="var(--pc-line)" stroke-width="1.2"/>
   <defs><linearGradient id="pcg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7aa7ff"/><stop offset="1" stop-color="#b57aff"/></linearGradient></defs>
@@ -101,10 +126,10 @@ class PcControlCard extends HTMLElement {
     this._hass = hass;
     if (!this._config) return;
     const sig = this._config.pcs.map((p) =>
-      [p.window_entity, p.shutdown_entity, p.wake_entity, p.state_entity].map((e) => {
+      [p.window_entity, p.shutdown_entity, p.wake_entity, p.state_entity, p.capture_entity].map((e) => {
         const s = e && hass.states[e];
         return s ? s.state : "x";
-      }).join("|")
+      }).join("|") + "|" + shotUrl(hass, p.screenshot_entity)
     ).join(";") + "#" + (this._isDark() ? "d" : "l");
     if (sig !== this._sig) {
       this._sig = sig;
@@ -157,18 +182,24 @@ class PcControlCard extends HTMLElement {
       const ws = p.window_entity ? h.states[p.window_entity] : null;
       const win = !bad(ws) ? String(ws.state) : "";
       const name = p.name || `PC ${i + 1}`;
-      const photo = p.picture && !/^\s*(javascript|vbscript|data:text)/i.test(String(p.picture));
-      const art = photo ? `<img class="photo ${on ? "" : "offimg"}" src="${esc(p.picture)}" alt="${esc(name)}">` : pcSvg(on, win);
+      // Capture d'écran (entité image.*) : affichée dans le moniteur quand le PC est allumé, à la place de la photo.
+      const shot = on ? shotUrl(h, p.screenshot_entity) : "";
+      const at = shot ? shotTime(h, p.screenshot_entity) : "";
+      const photo = !shot && p.picture && !/^\s*(javascript|vbscript|data:text)/i.test(String(p.picture));
+      const art = photo ? `<img class="photo ${on ? "" : "offimg"}" src="${esc(p.picture)}" alt="${esc(name)}">` : pcSvg(on, win, shot, i);
       const ww = p.wake_entity && h.states[p.wake_entity]; const canWake = !!ww && ww.state !== "unavailable";
       const canOff = p.shutdown_entity && on;
+      const cs = p.capture_entity && h.states[p.capture_entity]; const canSnap = on && !bad(cs);
+      const label = "Fenêtre active" + (at ? ` · capture ${at}` : "");
       return `
       <div class="pc ${on ? "on" : "off"}" data-i="${i}">
         <div class="top"><b>${esc(name)}</b><span class="st"><i></i>${on ? "Allumé" : "Éteint"}</span></div>
-        <div class="art">${art}</div>
-        <div class="win" title="${esc(win)}">${on ? (win ? "<small>Fenêtre active</small>" + esc(win) : "<small>Fenêtre active</small>—") : "<small>Hors tension</small>"}</div>
+        <div class="art ${shot ? "zoom" : ""}" ${shot ? `data-shot="${i}" title="Voir la capture en grand"` : ""}>${art}</div>
+        <div class="win" title="${esc(win)}">${on ? `<small>${label}</small>` + (win ? esc(win) : "—") : "<small>Hors tension</small>"}</div>
         <div class="btns">
           ${p.wake_entity ? `<button class="b wake" data-wake="${i}" ${canWake && !on ? "" : "disabled"}><ha-icon icon="mdi:power"></ha-icon>Démarrer</button>` : ""}
           ${p.shutdown_entity ? `<button class="b stop" data-stop="${i}" ${canOff ? "" : "disabled"}><ha-icon icon="mdi:power-off"></ha-icon>Éteindre</button>` : ""}
+          ${p.capture_entity ? `<button class="b snap" data-snap="${i}" title="Prendre une capture d'écran" ${canSnap ? "" : "disabled"}><ha-icon icon="mdi:camera"></ha-icon></button>` : ""}
         </div>
       </div>`;
     }).join("");
@@ -213,6 +244,8 @@ class PcControlCard extends HTMLElement {
         .b { flex:1; display:flex; align-items:center; justify-content:center; gap:.4em; padding:.6em .4em; border-radius:1em; font-size:.85em; font-weight:650;
           background:var(--pc-fill); border:1px solid var(--pc-fill-b); }
         .b.wake { color:var(--pc-on); } .b.stop { color:var(--pc-err); }
+        .b.snap { flex:none; padding:.6em .8em; color:var(--acc-ui-x,#5b6cff); }
+        .art.zoom { cursor:zoom-in; }
         .b:disabled { opacity:.35; cursor:default; }
         .b:not(:disabled):active { background:var(--pc-fill-b); }
         .led { animation:pc-led 1.8s ease-in-out infinite; } @keyframes pc-led { 50% { opacity:.35; } }
@@ -235,6 +268,14 @@ class PcControlCard extends HTMLElement {
       if (c.confirm && !window.confirm(`Éteindre ${p.name || "le PC"} ?`)) return;
       this._press(p.shutdown_entity);
     }));
+    root.querySelectorAll("[data-snap]").forEach((el) => el.addEventListener("click", () => {
+      const p = c.pcs[Number(el.dataset.snap)];
+      if (p && p.capture_entity) this._press(p.capture_entity);
+    }));
+    root.querySelectorAll("[data-shot]").forEach((el) => el.addEventListener("click", () => {
+      const p = c.pcs[Number(el.dataset.shot)];
+      this._more(p && p.screenshot_entity);
+    }));
     root.querySelectorAll(".win").forEach((el) => el.addEventListener("click", () => {
       const p = c.pcs[Number(el.closest(".pc").dataset.i)];
       this._more(p && (p.window_entity || p.shutdown_entity));
@@ -247,6 +288,7 @@ const LABELS = { ...GV_LABELS,
   title: "Titre (facultatif)", theme: "Thème", columns: "Colonnes (0 = automatique)", confirm: "Confirmer avant d'éteindre",
   name: "Nom du PC", picture: "Photo du PC (facultatif, ex. /local/pc.png)", window_entity: "Fenêtre active (capteur)",
   shutdown_entity: "Extinction (switch)", wake_entity: "Démarrage Wake-on-LAN (bouton)", state_entity: "État allumé/éteint (facultatif : ping, binary_sensor)",
+  screenshot_entity: "Capture d'écran (facultatif, entité image)", capture_entity: "Bouton de capture d'écran (facultatif)",
 };
 const PC_SCHEMA = [
   { name: "name", selector: { text: {} } },
@@ -254,6 +296,8 @@ const PC_SCHEMA = [
   { name: "shutdown_entity", selector: { entity: { domain: ["switch", "button", "script"] } } },
   { name: "wake_entity", selector: { entity: { domain: ["button", "switch", "script"] } } },
   { name: "state_entity", selector: { entity: { domain: ["binary_sensor", "device_tracker", "sensor"] } } },
+  { name: "screenshot_entity", selector: { entity: { domain: "image" } } },
+  { name: "capture_entity", selector: { entity: { domain: ["button", "script"] } } },
   { name: "picture", selector: { text: {} } },
 ];
 

@@ -19,7 +19,14 @@ pcs:
     shutdown_entity: switch.pc_shaun_shaun_eteindre_2
     wake_entity: button.wake_on_lan_00_e0_4c_45_a7_4c
     picture: /local/pc-shaun.png      # facultatif
+    screenshot_entity: image.shaun_shaun_pc_screenshot        # facultatif
+    capture_entity: button.shaun_shaun_pc_take_a_screenshot   # facultatif
 ```
+
+### Capture d'écran (HASS.Agent)
+Avec `screenshot_entity` (entité `image.*`, par exemple la capture de HASS.Agent), la dernière capture s'affiche **dans l'écran du PC** quand il est allumé, avec son heure. Elle se met à jour toute seule à chaque nouvelle capture. Un appui sur l'écran ouvre la capture en grand.
+Avec `capture_entity`, un bouton 📷 prend une nouvelle capture à la demande. Rien n'est capturé en continu.
+PC éteint : l'ancienne capture n'est pas affichée.
 
 | Option | Description |
 |---|---|
@@ -29,6 +36,8 @@ pcs:
 | `pcs[].wake_entity` | Entité de démarrage Wake-on-LAN |
 | `pcs[].state_entity` | Facultatif : entité d'état (ping, `binary_sensor`…) ; sans elle, le PC est considéré allumé tant que l'extinction est disponible |
 | `pcs[].picture` | Photo facultative à la place du dessin |
+| `pcs[].screenshot_entity` | Facultatif : entité `image` de capture d'écran, affichée dans l'écran du PC allumé (prioritaire sur la photo) |
+| `pcs[].capture_entity` | Facultatif : bouton (ou script) qui prend une capture d'écran, ajouté sous forme de bouton 📷 |
 | `columns`, `confirm`, `theme`, `title` | Colonnes (0 = auto), confirmation avant extinction, thème, titre |
 
 Licence MIT.
@@ -55,4 +64,5 @@ Sans cette ligne, `nuance: theme` garde les couleurs d'origine de la carte.
 
 ## Historique des versions
 
+- **1.2.0** : capture d'écran dans l'écran du PC (`screenshot_entity`), bouton de capture à la demande (`capture_entity`), affichage en grand au toucher.
 - **1.1.0** : nuance de couleur au choix (8 nuances, couleur personnalisée, intensité, ou nuance commune via `carte-nuance` dans le thème).
