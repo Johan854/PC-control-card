@@ -5,7 +5,7 @@
  * démarrage (Wake-on-LAN) et extinction. Plusieurs PC, style verre, thème clair/sombre, éditeur visuel.
  */
 
-const CARD_VERSION = "1.3.1";
+const CARD_VERSION = "1.4.0";
 
 /* === NUANCE COMMUNE v2 (cartes Johan854) ===
  * Bloc identique dans toutes les cartes. Options : nuance, nuance_perso, intensite.
@@ -144,6 +144,10 @@ function monitorArt(p, on, win, shot) {
   </div>`;
 }
 
+// Lien RustDesk : ouvre l'appli RustDesk de l'appareil, connectée à l'ID (ou l'IP) du PC.
+// Modèle réglable (rustdesk_url), {id} est remplacé par l'ID du PC.
+const RD_URL = "rustdesk://connection/new/{id}";
+const rdUrl = (c, p) => String(c.rustdesk_url || RD_URL).replace("{id}", encodeURIComponent(String(p.rustdesk_id).replace(/\s+/g, "")));
 const safeUrl = (u) => u && !/^\s*(javascript|vbscript|data:text)/i.test(String(u));
 
 class PcControlCard extends HTMLElement {
@@ -247,6 +251,8 @@ class PcControlCard extends HTMLElement {
         <div class="btns">
           ${p.wake_entity ? `<button class="b wake" data-wake="${i}" ${canWake && !on ? "" : "disabled"}><ha-icon icon="mdi:power"></ha-icon>Démarrer</button>` : ""}
           ${p.shutdown_entity ? `<button class="b stop" data-stop="${i}" ${canOff ? "" : "disabled"}><ha-icon icon="mdi:power-off"></ha-icon>Éteindre</button>` : ""}
+          ${p.rustdesk_id ? (on ? `<a class="b rd" href="${esc(rdUrl(c, p))}" target="_blank" rel="noopener" title="Prendre la main avec RustDesk"><ha-icon icon="mdi:remote-desktop"></ha-icon></a>`
+            : `<button class="b rd" disabled title="Prendre la main avec RustDesk"><ha-icon icon="mdi:remote-desktop"></ha-icon></button>`) : ""}
           ${p.capture_entity ? `<button class="b snap" data-snap="${i}" title="Prendre une capture d'écran" ${canSnap ? "" : "disabled"}><ha-icon icon="mdi:camera"></ha-icon></button>` : ""}
         </div>
       </div>`;
@@ -293,6 +299,7 @@ class PcControlCard extends HTMLElement {
           background:var(--pc-fill); border:1px solid var(--pc-fill-b); }
         .b.wake { color:var(--pc-on); } .b.stop { color:var(--pc-err); }
         .b.snap { flex:none; padding:.6em .8em; color:var(--acc-ui-x,#5b6cff); }
+        .b.rd { flex:none; padding:.6em .8em; color:var(--acc-ui-x,#2f8fd8); text-decoration:none; }
         .art.zoom { cursor:zoom-in; }
         .scene { position:relative; width:100%; max-width:360px; padding-bottom:2%; }
         .mon { position:relative; width:86%; }
@@ -348,6 +355,8 @@ const LABELS = { ...GV_LABELS,
   shutdown_entity: "Extinction (switch)", wake_entity: "Démarrage Wake-on-LAN (bouton)", state_entity: "État allumé/éteint (facultatif : ping, binary_sensor)",
   screenshot_entity: "Capture d'écran (facultatif, entité image)", capture_entity: "Bouton de capture d'écran (facultatif)",
   monitor_picture: "Photo de l'écran (facultatif, ex. /local/image/ecran-koorui.png)", mini_pc: "Afficher le mini PC à côté de l'écran",
+  rustdesk_id: "ID RustDesk ou adresse IP du PC (facultatif, bouton « Prendre la main »)",
+  rustdesk_url: "Lien RustDesk (avancé, {id} = ID du PC)",
   screen_area: "Zone de l'écran dans la photo, en % : gauche, haut, largeur, hauteur (vide = photo Koorui)",
 };
 const PC_SCHEMA = [
@@ -358,6 +367,7 @@ const PC_SCHEMA = [
   { name: "state_entity", selector: { entity: { domain: ["binary_sensor", "device_tracker", "sensor"] } } },
   { name: "screenshot_entity", selector: { entity: { domain: "image" } } },
   { name: "capture_entity", selector: { entity: { domain: ["button", "script"] } } },
+  { name: "rustdesk_id", selector: { text: {} } },
   { name: "monitor_picture", selector: { text: {} } },
   { name: "mini_pc", selector: { boolean: {} } },
   { name: "screen_area", selector: { text: {} } },
@@ -406,6 +416,7 @@ class PcControlCardEditor extends HTMLElement {
           { value: "auto", label: "Automatique (thème de Home Assistant)" }, { value: "light", label: "Clair" }, { value: "dark", label: "Sombre" } ] } } }, ...GV_FIELDS,
       ] },
       { name: "confirm", selector: { boolean: {} } },
+      { name: "rustdesk_url", selector: { text: {} } },
     ];
     main.addEventListener("value-changed", (ev) => {
       ev.stopPropagation();

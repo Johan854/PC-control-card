@@ -80,3 +80,10 @@ Sans cette ligne, `nuance: theme` garde les couleurs d'origine de la carte.
 - **1.3.0** : photo de l'écran (`monitor_picture`, photo Koorui fournie) avec la capture dans l'écran, et mini PC dessiné à côté (`mini_pc`).
 - **1.2.0** : capture d'écran dans l'écran du PC (`screenshot_entity`), bouton de capture à la demande (`capture_entity`), affichage en grand au toucher.
 - **1.1.0** : nuance de couleur au choix (8 nuances, couleur personnalisée, intensité, ou nuance commune via `carte-nuance` dans le thème).
+
+### Prise en main à distance (RustDesk)
+Avec `rustdesk_id` (l'ID RustDesk du PC, ou son adresse IP en connexion directe), un bouton 🖥 **Prendre la main** ouvre l'appli RustDesk de ton téléphone ou de ton PC, connectée au bon ordinateur. Il n'est actif que lorsque le PC est allumé.
+```yaml
+    rustdesk_id: 192.168.1.54     # ou l'ID affiché dans RustDesk, ex. 123 456 789
+```
+Si l'appli ne s'ouvre pas sur un appareil, le modèle du lien est réglable au niveau de la carte : `rustdesk_url: rustdesk://connection/new/{id}` (valeur par défaut).
