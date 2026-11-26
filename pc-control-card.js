@@ -5,7 +5,7 @@
  * démarrage (Wake-on-LAN) et extinction. Plusieurs PC, style verre, thème clair/sombre, éditeur visuel.
  */
 
-const CARD_VERSION = "1.3.0";
+const CARD_VERSION = "1.3.1";
 
 /* === NUANCE COMMUNE v2 (cartes Johan854) ===
  * Bloc identique dans toutes les cartes. Options : nuance, nuance_perso, intensite.
@@ -49,6 +49,9 @@ const DEFAULTS = {
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const bad = (st) => !st || st.state === "unavailable" || st.state === "unknown";
+// Un bouton jamais appuyé est « unknown » (inconnu) : il reste utilisable, seul « unavailable » le rend inactif.
+const btnBad = (st) => !st || st.state === "unavailable";
+const isBtn = (eid) => /^(input_)?button\./.test(String(eid || ""));
 const cut = (t, n) => (t.length > n ? t.slice(0, n - 1) + "…" : t);
 let UID = 0;
 
@@ -204,7 +207,7 @@ class PcControlCard extends HTMLElement {
       if (bad(s)) return false;
       return ["on", "home", "connected", "online", "playing"].includes(String(s.state).toLowerCase());
     }
-    if (p.shutdown_entity) return !bad(h.states[p.shutdown_entity]);
+    if (p.shutdown_entity) return !(isBtn(p.shutdown_entity) ? btnBad : bad)(h.states[p.shutdown_entity]);
     if (p.window_entity) return !bad(h.states[p.window_entity]);
     return false;
   }
@@ -234,7 +237,7 @@ class PcControlCard extends HTMLElement {
         : photo ? `<img class="photo ${on ? "" : "offimg"}" src="${esc(p.picture)}" alt="${esc(name)}">` : pcSvg(on, win, shot, i);
       const ww = p.wake_entity && h.states[p.wake_entity]; const canWake = !!ww && ww.state !== "unavailable";
       const canOff = p.shutdown_entity && on;
-      const cs = p.capture_entity && h.states[p.capture_entity]; const canSnap = on && !bad(cs);
+      const cs = p.capture_entity && h.states[p.capture_entity]; const canSnap = on && !btnBad(cs);
       const label = "Fenêtre active" + (at ? ` · capture ${at}` : "");
       return `
       <div class="pc ${on ? "on" : "off"}" data-i="${i}">
